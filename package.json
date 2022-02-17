@@ -1,5 +1,5 @@
 {
-  "name": "chain-backend",
+  "name": "chain-publisher",
   "version": "0.1.0",
   "private": true,
   "engines": {
