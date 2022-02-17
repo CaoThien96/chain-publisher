@@ -29,23 +29,25 @@ filters.forEach(f => delete f.address)
 const topicFarm = filters[0].topics[1]
 
 const applyLogsBalance = async (storage, logs, key) => {
-    const sfarmTokenState = await storage.get('sfarm-tokens') || {
-        range: genesis - 1,
-        changes: {}
-    }
+    const sfarmTokenState = await storage.getItem('tokens') || {}
 
-    const state = await storage.getItem(key) || {
-        range: genesis - 1,
-        changes: {}
-    }
-    let value = { ...state.changes }
+    let lpTokens = {}
+    await storage.forEach(async function (datum) {
+        // use datum.key and datum.value
+        const key = datum.key
+        const value = datum.value
+        const [prefix,token] = key.split(',')
+        if (prefix == 'token' && value === 1) {
+            lpTokens[token] = value
+        }
+    });
 
-    const lpTokens = _.pickBy(sfarmTokenState.changes, (level) => level === 1)
+    let value = {}
 
     const changes = new Map()
 
     function getKey(address, token) {
-        return [address == token ? ZERO_ADDRESS : address, token].join(SEPARATOR)
+        return ['balances', address == token ? ZERO_ADDRESS : address, token].join(SEPARATOR)
     }
 
     // assume that the logs is sorted by blockNumber and transactionIndex
@@ -54,6 +56,7 @@ const applyLogsBalance = async (storage, logs, key) => {
 
         const isFrom = topics[1] === topicFarm
         const isTo = topics[2] === topicFarm
+
         if (!isFrom && !isTo) {
             throw new Error('unexpected log', log)
         }
@@ -72,8 +75,11 @@ const applyLogsBalance = async (storage, logs, key) => {
     }
 
     for (const [key, change] of changes) {
-        const [address, token] = key.split(SEPARATOR)
-        value[`${address}#${token}`] = bn(value[`${address}#${token}`] ?? 0).add(change)
+        let valueBefore = await storage.getItem(key)
+
+        valueBefore = bn(valueBefore ?? 0)
+
+        value[key] = valueBefore.add(change).toString()
     }
 
     return value    // untouched
@@ -90,21 +96,21 @@ const events = [
         },
         genesis,
         applyLogs: async (storage, logs) => {
-            const state = await storage.getItem('sfarm-tokens') || {
-                range: genesis - 1,
-                changes: {}
+            const state = await storage.getItem('tokens') || {}
+            let changes = {}
+
+            const getKey = (address) => {
+                return ['token', address].join(SEPARATOR)
             }
-            let changes = { ...state.changes }
 
             // assume that the logs is sorted by blockNumber and transactionIndex
             logs.forEach(log => {
                 const address = ethers.utils.getAddress('0x' + log.topics[1].slice(26))
                 const level = parseInt(log.data, 16)
-                if (level) {
-                    changes[address] = level
-                } else {
-                    delete changes[address]
-                }
+
+                const key = getKey(address)
+
+                changes[key] = level
             })
 
             return changes
@@ -139,19 +145,7 @@ const events = [
 
 
 const RPCs = [
-    "https://bsc-dataseed.binance.org",
-    "https://bsc-dataseed1.defibit.io",
-    "https://bsc-dataseed1.ninicoin.io",
-    "https://bsc-dataseed2.defibit.io",
-    "https://bsc-dataseed3.defibit.io",
-    "https://bsc-dataseed4.defibit.io",
-    "https://bsc-dataseed2.ninicoin.io",
-    "https://bsc-dataseed3.ninicoin.io",
-    "https://bsc-dataseed4.ninicoin.io",
-    "https://bsc-dataseed1.binance.org",
-    "https://bsc-dataseed2.binance.org",
-    "https://bsc-dataseed3.binance.org",
-    "https://bsc-dataseed4.binance.org",
+    "https://bsc-dataseed.binance.org"
 ]
 const providers = RPCs.map(rpc => new AssistedJsonRpcProvider(
     new JsonRpcProvider(rpc),
@@ -170,14 +164,9 @@ async function main() {
         size: 1000,
         storage
     })
-    
+
     chainBroker.subscribe(events[0])
     for (let index = 1; index < events.length; index++) {
-        await new Promise(resolve=>{
-            setTimeout(() => {
-                resolve()
-            }, 20000);
-        })
         const event = events[index];
         chainBroker.subscribe(event)
     }
