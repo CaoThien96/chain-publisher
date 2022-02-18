@@ -21,26 +21,31 @@ const scanApiKeys = [
     'ZK82FBHZBUD9BDSB9SCS1NVT3K7Y8R2TKF',
     'YD1424ACBTAZBRJWEIHAPHFZMT69MZXBBI',
 ]
-const event = {
-    topics: [
-        "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef",
-        "0x0000000000000000000000008894e0a0c962cb723c1976a4421c95949be2d4e3" // Hot Wallet
-    ]
-}
+const events = [
+    {
+        key: 'hotwallet-out',
+        filter: {
+            topics: [
+                "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef",
+                "0x0000000000000000000000008894e0a0c962cb723c1976a4421c95949be2d4e3" // Hot Wallet
+            ]
+        },
+        safeDepth: 32
+    },
+    {
+        key: 'hotwallet-in',
+        filter: {
+            topics: [
+                "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef",
+                null,
+                "0x0000000000000000000000008894e0a0c962cb723c1976a4421c95949be2d4e3" // Hot Wallet
+            ]
+        },
+        safeDepth: 16
+    },
+]
 const RPCs = [
-    "https://bsc-dataseed.binance.org",
-    "https://bsc-dataseed1.defibit.io",
-    "https://bsc-dataseed1.ninicoin.io",
-    "https://bsc-dataseed2.defibit.io",
-    "https://bsc-dataseed3.defibit.io",
-    "https://bsc-dataseed4.defibit.io",
-    "https://bsc-dataseed2.ninicoin.io",
-    "https://bsc-dataseed3.ninicoin.io",
-    "https://bsc-dataseed4.ninicoin.io",
-    "https://bsc-dataseed1.binance.org",
-    "https://bsc-dataseed2.binance.org",
-    "https://bsc-dataseed3.binance.org",
-    "https://bsc-dataseed4.binance.org",
+    "https://bsc-dataseed.binance.org"
 ]
 
 
@@ -66,7 +71,82 @@ const providers = RPCs.map(rpc => new AssistedJsonRpcProvider(
         rateLimitDuration: 5000
     }
 ))
+async function applyLogs(storage, logs, unSafe, genesis, key, event) {
+    logs = logs.map(log => ({
+        blockNumber: Number(log.blockNumber),
+        logIndex: Number(log.logIndex) || 0,
+        transactionIndex: Number(log.transactionIndex) || 0,
+        transactionHash: log.transactionHash
+    }))
 
+    const state = await storage.getItem(key) || { range: genesis - 1 }
+    const range = state.range
+
+    let hotWalletLogs = await storage.getItem('hot-wallet-history' + key) || []
+
+    if (!logs.length) {
+        return {}
+    }
+
+    if (range < genesis) {
+        !unSafe && await storage.setItem('hot-wallet-history' + key, hotWalletLogs.concat(logs))
+        return {}
+    }
+
+    if (!unSafe && process.env.NODE_ENV !== 'production') {
+        // Compare the logs found from genesis to safeHead with scan api
+        let logCompare = await Provider.getLogs({
+            ...event.filter,
+            fromBlock: genesis,
+            toBlock: range,
+
+        })
+
+
+        logCompare.forEach(log => {
+            log.blockNumber = Number(log.blockNumber)
+            log.logIndex = Number(log.logIndex) || 0
+            log.transactionIndex = Number(log.transactionIndex) || 0
+        });
+
+        // Check the number of logs
+        if (hotWalletLogs.length != logCompare.length) {
+            // refetch for log accuracy
+            for (let index = 0; index < 5; index++) {
+                console.info('refetch for log accuracy')
+                logCompare = await Provider.getLogs({
+                    ...event.filter,
+                    fromBlock: genesis,
+                    toBlock: range,
+
+                })
+                if (logCompare.length == hotWalletLogs.length) {
+                    console.info(`${key}: ${logCompare.length} LOGS MATCHED`)
+                    break
+                }
+            }
+            hotWalletLogs.length != logCompare.length && console.error('ERRORED ', key, ':', genesis, ':', range, `EXPECTED: ${logCompare.length} BUT RECEIVE: ${hotWalletLogs.length}`)
+        } else {
+
+            let error = false
+            // Check index of log
+            for (let index = 0; index < logCompare.length; index++) {
+                const isEqual = equalLog(logCompare[index], hotWalletLogs[index])
+                if (!isEqual) {
+                    error = {
+                        index,
+                        log: hotWalletLogs[index]
+                    }
+                    break
+                }
+            }
+
+            console.info(!error ? `${key}: ${logCompare.length} LOGS MATCHED` : `NOT MATCH LOG AT ${error}`)
+        }
+        await storage.setItem('hot-wallet-history' + key, hotWalletLogs.concat(logs))
+    }
+    return {}
+}
 async function main() {
     await storage.init();
 
@@ -76,72 +156,15 @@ async function main() {
         storage
     })
 
-    var genesis = await storage.getItem('genesis') || await providers[0].getBlockNumber() - 2333
+    var genesis = await storage.getItem('genesis') || await providers[0].getBlockNumber() - 5000
     await storage.setItem('genesis', genesis)
-
-    chainBroker.subscribe({
-        key: 'hot-wallet',
-        filter: event,
+    events.forEach(event => chainBroker.subscribe({
+        ...event,
         genesis,
-        safeDepth: 64,
         applyLogs: async (storage, logs, unSafe) => {
-            const state = await storage.getItem('hot-wallet') || {
-                range: 0,
-                changes: []
-            }
-            const range = state.range
-            let changes = [...state.changes]
-
-            if (!logs.length) {
-                return changes
-            }
-
-            if (range < genesis) {
-                return changes.concat(logs.map(log => ({ logIndex: log.logIndex, transactionHash: log.transactionHash })))
-            }
-
-            if (!unSafe && process.env.NODE_ENV !== 'production') {
-                // Compare the logs found from genesis to safeHead with scan api
-                let logCompare = await Provider.getLogs({
-                    ...event,
-                    fromBlock: genesis,
-                    toBlock: range,
-
-                })
-
-                logCompare.forEach(log => {
-                    log.blockNumber = Number(log.blockNumber)
-                    log.logIndex = Number(log.logIndex) || 0
-                    log.transactionIndex = Number(log.transactionIndex) || 0
-                });
-
-                // Check the number of logs
-                if (changes.length != logCompare.length) {
-                    console.error('ERRORED', ':', genesis, ':', range, `EXPECTED: ${logCompare.length} BUT RECEIVE: ${changes.length}`)
-                } else {
-
-                    let error = false
-                    // Check index of log
-                    for (let index = 0; index < logCompare.length; index++) {
-                        const isEqual = equalLog(logCompare[index], changes[index])
-                        if (!isEqual) {
-                            error = {
-                                index,
-                                log: changes[index]
-                            }
-                            break
-                        }
-                    }
-
-                    console.info(!error ? `CHECK ${logCompare.length} LOGS MATCHED` : `NOT MATCH LOG AT ${error}`)
-                }
-            }
-
-            return changes.concat(logs.map(log => ({ logIndex: log.logIndex, transactionHash: log.transactionHash })))
-
+            return applyLogs(storage, logs, unSafe, genesis, event.key, event)
         }
-    })
-
+    }))
 }
 
 

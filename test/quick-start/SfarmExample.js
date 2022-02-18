@@ -125,8 +125,7 @@ const events = [
             const changes = await applyLogsBalance(storage, logs, 'sfarm-balances-out')
             return changes
         },
-        safeDepth: 64,
-        order: 2
+        safeDepth: 32
     },
     {
         key: 'sfarm-balances-in',
@@ -136,8 +135,7 @@ const events = [
             const changes = await applyLogsBalance(storage, logs, 'sfarm-balances-in')
             return changes
         },
-        safeDepth: 64,
-        order: 1
+        safeDepth: 16
     }
 ]
 
