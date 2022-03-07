@@ -82,12 +82,12 @@ async function applyLogs(storage, logs, unSafe, genesis, key, event) {
     let hotWalletLogs = await storage.getItem('hot-wallet-history' + key) || []
 
     if (!logs.length) {
-        return {}
+        return
     }
 
     if (safeBlock < genesis) {
         !unSafe && await storage.setItem('hot-wallet-history' + key, hotWalletLogs.concat(logs))
-        return {}
+        return
     }
 
     if (!unSafe && process.env.NODE_ENV !== 'production') {
@@ -149,7 +149,7 @@ async function applyLogs(storage, logs, unSafe, genesis, key, event) {
         }
         await storage.setItem('hot-wallet-history' + key, hotWalletLogs.concat(logs))
     }
-    return {}
+    return
 }
 async function main() {
     await storage.init();

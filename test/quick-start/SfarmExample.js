@@ -1,7 +1,6 @@
 'use strict'
 
 const { ethers } = require('ethers')
-const Bluebird = require('bluebird')
 const abiIERC20 = require('./IERC20.json').abi
 const { JsonRpcProvider } = require('@ethersproject/providers')
 const storage = require('node-persist');
@@ -42,20 +41,13 @@ const isBidirectional = (transactionHash, logs) => {
 }
 
 const applyLogsBalance = async (storage, logs) => {
-    const sfarmTokenState = await storage.getItem('tokens') || {}
+    let lpTokens = await storage.getItem('tokens') || {}
 
-    let lpTokens = {}
-    await storage.forEach(async function (datum) {
-        // use datum.key and datum.value
-        const key = datum.key
-        const value = datum.value
-        const [prefix, token] = key.split(',')
-        if (prefix == 'token' && value === 1) {
-            lpTokens[token] = value
+    _.forEach(lpTokens, (value, key) => {
+        if (value != 1) {
+            delete lpTokens[key]
         }
-    });
-
-    let value = {}
+    })
 
     const changes = new Map()
     const txIn = new Map()
@@ -101,7 +93,7 @@ const applyLogsBalance = async (storage, logs) => {
     }
 
     for (const [key, change] of changes) {
-        let valueBefore = await storage.getItem(key)
+        let beforeVal = await storage.getItem(key)
 
         const [prefix, address, token] = key.split(SEPARATOR)
 
@@ -112,21 +104,19 @@ const applyLogsBalance = async (storage, logs) => {
         if (txOut.has(key)) {
             liquidity.txOut = txOut.get(key)
         }
-        if (Object.keys(key).length) {
-            value[['liquidity', address, token].join(SEPARATOR)] = {
+        
+
+        beforeVal = bn(beforeVal ?? 0)
+
+        await Promise.all([
+            storage.setItem(key, beforeVal.add(change).toString()),
+            storage.setItem(['liquidity', address, token].join(SEPARATOR), {
                 address,
                 token,
                 liquidity
-            }
-
-        }
-
-        valueBefore = bn(valueBefore ?? 0)
-
-        value[key] = valueBefore.add(change).toString()
+            })
+        ]) 
     }
-
-    return value    // untouched
 }
 
 const events = [
@@ -140,24 +130,20 @@ const events = [
         },
         genesis,
         applyLogs: async (storage, logs) => {
-            const state = await storage.getItem('tokens') || {}
-            let changes = {}
-
-            const getKey = (address) => {
-                return ['token', address].join(SEPARATOR)
-            }
-
+            let tokens = await storage.getItem('tokens') || {}
             // assume that the logs is sorted by blockNumber and transactionIndex
-            logs.forEach(log => {
+            for (const log of logs) {
                 const address = ethers.utils.getAddress('0x' + log.topics[1].slice(26))
                 const level = parseInt(log.data, 16)
 
-                const key = getKey(address)
-
-                changes[key] = level
-            })
-
-            return changes
+                if (level) {
+                    tokens[address] = level
+                } else {
+                    delete tokens[address]
+                }
+            }
+            await storage.setItem('tokens', tokens)
+            return
         },
         safeDepth: 64
     },

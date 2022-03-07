@@ -23,22 +23,18 @@ const event = {
     safeDepth: 64,
     filter,
     applyLogs: async (storage, logs) => {
-        if (!logs?.length) return {}
+        if (!logs?.length) return
 
         let value = await storage.getItem('admins') || {};
         // assume that the logs is sorted by blockNumber and transactionIndex
-        logs.forEach(log => {
+        for (const log of logs) {
             const address = ethers.utils.getAddress('0x' + log.topics[1].slice(26))
             if (log.data != ZERO_HASH) {
-                value[address] = true
+                await storage.setItem(address, true)
             } else {
-                delete value[address]
+                await storage.removeItem(address)
             }
-        })
-
-        return {
-            'admins': value
-        };
+        }
     }
 }
 

@@ -55,7 +55,7 @@ describe('validator.standardizeStartConfiguration', () => {
             },
             {
                 name: 'ChainPublisherError',
-                message: 'invalid configuration "AssistedJsonRpcProvider". Please use lib assisted-json-rpc-provider'
+                message: 'invalid configuration "provider". Please use lib assisted-json-rpc-provider'
             }
         )
         assert.throws(
@@ -68,7 +68,7 @@ describe('validator.standardizeStartConfiguration', () => {
             },
             {
                 name: 'ChainPublisherError',
-                message: 'invalid configuration "AssistedJsonRpcProvider". Please use lib assisted-json-rpc-provider'
+                message: 'invalid configuration "provider". Please use lib assisted-json-rpc-provider'
             }
         )
     })
@@ -87,7 +87,7 @@ describe('validator.standardizeStartConfiguration', () => {
             },
             {
                 name: 'ChainPublisherError',
-                message: 'invalid configuration "AssistedJsonRpcProvider". Please use lib assisted-json-rpc-provider'
+                message: 'invalid configuration "provider". Please use lib assisted-json-rpc-provider'
             }
         )
     })
