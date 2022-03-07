@@ -33,7 +33,7 @@ const chainPublisher = new ChainPublisher(config)
 // Input
 //  * event {Object}
 //  * event.key {String}
-//  * event.filter {ethers.Contract.Filter}
+//  * event.filter {Array<ethers.Contract.Filter>}
 //  * event.genesis {Number}
 //  * event.safeDepth {Number}
 //  * event.applyLogs {applyLogsFunction}
@@ -57,10 +57,7 @@ const chainPublisher = new ChainPublisher(config)
 // Type async function
 // Input
 //  * key {string}
-// Output {
-//    changes: {any},
-//    unsafeChanges: {any}
-// }
+// Output: the value for that key stored 
 chainPublisher.getState(key)
 ```
 ## Types
@@ -76,6 +73,6 @@ chainPublisher.getState(key)
 
 // Type AssistedJsonRpcProvider {Object}
 // Description
-//  * It is an instance of lib AssistedJsonRpcProvider.
+//  * It is an instance of lib assisted-json-rpc-provider.
 //  * npm i assisted-json-rpc-provider.
 ```

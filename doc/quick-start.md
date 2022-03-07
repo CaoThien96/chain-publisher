@@ -17,12 +17,12 @@ cd quick-start
 #
 # Create a worker to retrieve and store data from BSC network.
 # Get content of this file below.
-touch WalletSample.js
+touch quick-start.js
 
 # Step 5.
 #
 # Test it by run for a while.
-timeout 15s node WalletSample.js
+timeout 15s node quick-start.js
 ```
 
-* File [WalletSample.js](../test/quick-start/WalletSample.js)
+* File [quick-start.js](../test/quick-start/quick-start.js)
