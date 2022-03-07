@@ -13,7 +13,7 @@ const { AssistedJsonRpcProvider } = require('assisted-json-rpc-provider')
 const {
     ChainPublisher
 } = require('../../lib/index');
-const { equalLog } = require('../../lib/ethers-log-filter');
+const { mergeUniqSortedLogs, compareLog } = require('../../lib/ethers-log-filter');
 
 
 const scanApiKeys = [
@@ -23,26 +23,24 @@ const scanApiKeys = [
 ]
 const events = [
     {
-        key: 'hotwallet-out',
-        filter: {
-            topics: [
-                "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef",
-                "0x0000000000000000000000008894e0a0c962cb723c1976a4421c95949be2d4e3" // Hot Wallet
-            ]
-        },
+        key: 'hotwallet',
+        filter: [
+            {
+                topics: [
+                    "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef",
+                    "0x0000000000000000000000008894e0a0c962cb723c1976a4421c95949be2d4e3" // Hot Wallet
+                ]
+            },
+            {
+                topics: [
+                    "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef",
+                    null,
+                    "0x0000000000000000000000008894e0a0c962cb723c1976a4421c95949be2d4e3" // Hot Wallet
+                ]
+            }
+        ],
         safeDepth: 32
-    },
-    {
-        key: 'hotwallet-in',
-        filter: {
-            topics: [
-                "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef",
-                null,
-                "0x0000000000000000000000008894e0a0c962cb723c1976a4421c95949be2d4e3" // Hot Wallet
-            ]
-        },
-        safeDepth: 16
-    },
+    }
 ]
 const RPCs = [
     "https://bsc-dataseed.binance.org"
@@ -75,12 +73,11 @@ async function applyLogs(storage, logs, unSafe, genesis, key, event) {
     logs = logs.map(log => ({
         blockNumber: Number(log.blockNumber),
         logIndex: Number(log.logIndex) || 0,
-        transactionIndex: Number(log.transactionIndex) || 0,
         transactionHash: log.transactionHash
     }))
 
-    const state = await storage.getItem(key) || { range: genesis - 1 }
-    const range = state.range
+    const state = await storage.getItem(key) || { safeBlock: genesis - 1 }
+    const safeBlock = state.safeBlock
 
     let hotWalletLogs = await storage.getItem('hot-wallet-history' + key) || []
 
@@ -88,25 +85,30 @@ async function applyLogs(storage, logs, unSafe, genesis, key, event) {
         return {}
     }
 
-    if (range < genesis) {
+    if (safeBlock < genesis) {
         !unSafe && await storage.setItem('hot-wallet-history' + key, hotWalletLogs.concat(logs))
         return {}
     }
 
     if (!unSafe && process.env.NODE_ENV !== 'production') {
+        console.info('')
         // Compare the logs found from genesis to safeHead with scan api
-        let logCompare = await Provider.getLogs({
-            ...event.filter,
+        let logComparess = await Promise.all(_.map(event.filter, f => Provider.getLogs({
+            ...f,
             fromBlock: genesis,
-            toBlock: range,
-
+            toBlock: safeBlock
+        })))
+        logComparess.forEach(logs => {
+            logs.forEach(log => {
+                log.blockNumber = Number(log.blockNumber)
+                log.logIndex = Number(log.logIndex) || 0
+            });
         })
-
+        let logCompare = mergeUniqSortedLogs(logComparess)
 
         logCompare.forEach(log => {
             log.blockNumber = Number(log.blockNumber)
             log.logIndex = Number(log.logIndex) || 0
-            log.transactionIndex = Number(log.transactionIndex) || 0
         });
 
         // Check the number of logs
@@ -114,25 +116,27 @@ async function applyLogs(storage, logs, unSafe, genesis, key, event) {
             // refetch for log accuracy
             for (let index = 0; index < 5; index++) {
                 console.info('refetch for log accuracy')
-                logCompare = await Provider.getLogs({
-                    ...event.filter,
+                logComparess = await Promise.all(_.map(event.filter, f => Provider.getLogs({
+                    ...f,
                     fromBlock: genesis,
-                    toBlock: range,
+                    toBlock: safeBlock
+                })))
 
-                })
+                logCompare = mergeUniqSortedLogs(logComparess)
+
                 if (logCompare.length == hotWalletLogs.length) {
                     console.info(`${key}: ${logCompare.length} LOGS MATCHED`)
                     break
                 }
             }
-            hotWalletLogs.length != logCompare.length && console.error('ERRORED ', key, ':', genesis, ':', range, `EXPECTED: ${logCompare.length} BUT RECEIVE: ${hotWalletLogs.length}`)
+            hotWalletLogs.length != logCompare.length && console.error('ERRORED ', key, ':', genesis, ':', safeBlock, `EXPECTED: ${logCompare.length} BUT RECEIVE: ${hotWalletLogs.length}`)
         } else {
 
             let error = false
             // Check index of log
             for (let index = 0; index < logCompare.length; index++) {
-                const isEqual = equalLog(logCompare[index], hotWalletLogs[index])
-                if (!isEqual) {
+                const c = compareLog(logCompare[index], hotWalletLogs[index])
+                if (c != 0) {
                     error = {
                         index,
                         log: hotWalletLogs[index]

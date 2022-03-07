@@ -28,7 +28,20 @@ const filters = [
 filters.forEach(f => delete f.address)
 const topicFarm = filters[0].topics[1]
 
-const applyLogsBalance = async (storage, logs, key) => {
+const isBidirectional = (transactionHash, logs) => {
+    const txLogs = logs.filter(l => l.transactionHash == transactionHash)
+    return txLogs.some(log => txLogs.some(other => {
+        let check = log.address == other.address && (
+            (log.topics[1] == topicFarm && other.topics[2] == topicFarm) ||
+            (log.topics[2] == topicFarm && other.topics[1] == topicFarm))
+        if (check) {
+            console.info('')
+        }
+        return check
+    }))
+}
+
+const applyLogsBalance = async (storage, logs) => {
     const sfarmTokenState = await storage.getItem('tokens') || {}
 
     let lpTokens = {}
@@ -36,7 +49,7 @@ const applyLogsBalance = async (storage, logs, key) => {
         // use datum.key and datum.value
         const key = datum.key
         const value = datum.value
-        const [prefix,token] = key.split(',')
+        const [prefix, token] = key.split(',')
         if (prefix == 'token' && value === 1) {
             lpTokens[token] = value
         }
@@ -45,6 +58,8 @@ const applyLogsBalance = async (storage, logs, key) => {
     let value = {}
 
     const changes = new Map()
+    const txIn = new Map()
+    const txOut = new Map()
 
     function getKey(address, token) {
         return ['balances', address == token ? ZERO_ADDRESS : address, token].join(SEPARATOR)
@@ -71,11 +86,40 @@ const applyLogsBalance = async (storage, logs, key) => {
             const other = addressFromTopic(topics[isFrom ? 2 : 1])
             const otherKey = getKey(other, token)
             changes.set(otherKey, bn(changes.get(otherKey) ?? 0).sub(amount))
+
+            if (isBidirectional(transactionHash, logs)) {
+                // skip updating txIn/txOut of bidirectional LP transfer
+                console.error("SKIP: bidirectional tx", transactionHash)
+            } else {
+                if (isFrom) {
+                    txOut.set(otherKey, transactionHash)
+                } else {
+                    txIn.set(otherKey, transactionHash)
+                }
+            }
         }
     }
 
     for (const [key, change] of changes) {
         let valueBefore = await storage.getItem(key)
+
+        const [prefix, address, token] = key.split(SEPARATOR)
+
+        const liquidity = {}
+        if (txIn.has(key)) {
+            liquidity.txIn = txIn.get(key)
+        }
+        if (txOut.has(key)) {
+            liquidity.txOut = txOut.get(key)
+        }
+        if (Object.keys(key).length) {
+            value[['liquidity', address, token].join(SEPARATOR)] = {
+                address,
+                token,
+                liquidity
+            }
+
+        }
 
         valueBefore = bn(valueBefore ?? 0)
 
@@ -118,24 +162,14 @@ const events = [
         safeDepth: 64
     },
     {
-        key: 'sfarm-balances-out',
-        filter: filters[0],
+        key: 'sfarm-balances',
+        filter: filters,
         genesis,
         applyLogs: async (storage, logs) => {
-            const changes = await applyLogsBalance(storage, logs, 'sfarm-balances-out')
+            const changes = await applyLogsBalance(storage, logs)
             return changes
         },
         safeDepth: 32
-    },
-    {
-        key: 'sfarm-balances-in',
-        filter: filters[1],
-        genesis,
-        applyLogs: async (storage, logs) => {
-            const changes = await applyLogsBalance(storage, logs, 'sfarm-balances-in')
-            return changes
-        },
-        safeDepth: 16
     }
 ]
 
