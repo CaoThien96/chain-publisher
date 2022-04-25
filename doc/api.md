@@ -1,16 +1,14 @@
 # APIs
 
-* [startWorker()](#startworker)
-* [factory.accumulationConsumer()](#factoryaccumulationconsumer)
-* [factory.synchronizationConsumer()](#factorysynchronizationconsumer)
-* [factory.updateConsumer()](#factoryupdateconsumer)
-* [chainlogProcessorConfig()](#chainlogprocessorconfig)
-* [Types](#types)
+* [ChainPublisher](#ChainPublisher)
+* [subscribe](#subscribe)
+* [unSubscribe](#unSubscribe)
+* [getState](#getState)
 
-## startWorker()
+## new ChainPublisher()
 
 ```js
-const {startWorker} = require('chain-backend')
+const {ChainPublisher} = require('chain-publisher')
 
 // Description
 //  * Start a worker that retrieve and store data from Binance Smart Chain
@@ -18,151 +16,63 @@ const {startWorker} = require('chain-backend')
 //
 // Input
 //  * config {Object}
-//  * config.consumerConstructors {Array<ConsumerConstructor>}
-//  * config.mongoose {mongoose.Mongoose} There are reserved model's names and
-//    must not use by outside of this function: 'Config', 'LogsState'.
-//  * config.processorConfigs {Object}
+//  * config.provider {AssistedJsonRpcProvider || AssistedJsonRpcProvider[]}
+//  * config.storage {localStorage}
+//  * size {Number}
 //
 // Errors
-//  * ChainBackendError
-async function startWorker(config) {}
+//  * ChainPublisherError
+new ChainPublisher(config)
 ```
 
-## factory.accumulationConsumer()
+## new ChainPublisher(config).subscribe()
 
 ```js
-const {accumulationConsumer} = require('chain-backend').factory
-
+const {ChainPublisher} = require('chain-publisher')
+const chainPublisher = new ChainPublisher(config)
 // Input
-//  * config {Object}
-//  * config.key {String}
-//  * config.filter {ethers.Contract.Filter}
-//  * config.genesis {String}
-//  * config.applyLogs {applyLogsFunction}
-//  * config.mongoose {ChainBackendMongoose}
-//
-// Output {Consumer}
-function accumulationConsumer(config) {}
+//  * event {Object}
+//  * event.key {String}
+//  * event.filter {Array<ethers.Contract.Filter>}
+//  * event.genesis {Number}
+//  * event.safeDepth {Number}
+//  * event.applyLogs {applyLogsFunction}
+// Output {}
+chainPublisher.subscribe(event)
 ```
-
-## factory.synchronizationConsumer()
+## new ChainPublisher(config).unSubscribe()
 
 ```js
-const {synchronizationConsumer} = require('chain-backend').factory
-
+const {ChainPublisher} = require('chain-publisher')
+const chainPublisher = new ChainPublisher(config)
 // Input
-//  * config {Object}
-//  * config.key {String}
-//  * config.filter {ethers.Contract.Filter}
-//  * config.genesis {String} A number as string.
-//  * config.applyLogs {applyLogsFunction}
-//  * config.rangeLimit {Number}
-//  * config.mongoose {ChainBackendMongoose}
-//
-// Output {Consumer}
-function synchronizationConsumer() {}
-
+//  * key {string}
+// Output {}
+chainPublisher.unSubscribe(key)
 ```
-
-## factory.updateConsumer
-
+## new ChainPublisher(config).getState()
 ```js
-const {updateConsumer} = require('chain-backend').factory
-
+const {ChainPublisher} = require('chain-publisher')
+const chainPublisher = new ChainPublisher(config)
+// Type async function
 // Input
-//  * config {Object}
-//  * config.key {String}
-//  * config.filter {ethers.Contract.Filter}
-//  * config.genesis {String} A number as string.
-//  * config.applyLogs {function applyLogsFunction}
-//  * config.mongoose {ChainBackendMongoose}
-//
-// Output {Consumer}
-function updateConsumer() {}
+//  * key {string}
+// Output: the value for that key stored 
+chainPublisher.getState(key)
 ```
-
-## chainlogProcessorConfig()
-
-```js
-const {chainlogProcessorConfig} = require('chain-backend')
-
-// Description
-//  * Create a configuration which is pass to 'startWorker(config)' as input
-//  'config.processorConfigs'.
-//
-// Input
-//  * options {Object}
-//  * options.type {String} 'HEAD' or 'PAST'.
-//  * options.config {Object}
-//  * options.config.provider {ethers.providers.JsonRpcProvider}
-//  * options.config.size {Number}
-//  * options.config.concurrency {Number}
-//  * options.hardCap {Number}
-//  * options.target {Number}
-//
-// Output {Object}
-//  * getLogs {getLogsFunction}
-//  * getConcurrency {function() => Number}
-//  * getSize {function() => Number}
-function chainlogProcessorConfig({type, config, hardCap=4000, target=500}) {}
-```
-
 ## Types
 
 ```js
-// Type Consumer {Object}
-//  * key {String}
-//  * getRequests {getRequestsFunction}
-
-
-// Type getRequestsFunction {function}
-//
-// Input
-//  * options {Object}
-//  * options.maxRange {Number}
-//  * options.lastHead {Number}
-//
-// Output {ConsumerRequest}
-
-
-// Type ConsumerRequest {Object}
-//  * key {String}
-//  * address {String}
-//  * topics {ethers.providers.EventFilter.topics}
-//  * from {Number}
-//  * processLogs  {processLogsFunction}
-
-
-// Type getLogsFuction {function}
-//
-// Input
-//  * filter {ethers.providers.Filter}
-//
-// Output {Array<ethers.providers.Log>}
-
-
-// Type processLogsFunction {function}
-//
-// Input
-//  * request {ConsumerRequest}
-//  * logs {Array<ethers.providers.Log>}
-//  * fromBlock {Number}
-//  * toBlock {Number}
-//  * lastHead {Number}
-//  * head {Number}
-
-
 // Type applyLogsFunction {function}
 //
 // Input
-//  * value {String}
+//  * storage {localStorage}
 //  * logs {Array<ethers.providers.Log>}
 //
-// Output {String}
+// Output any
 
-// Type ChainBackendMongoose {mongoose.Mongoose}
-//
+// Type AssistedJsonRpcProvider {Object}
 // Description
-//  * It is an instance of mongoose.Mongoose which is apply internal schemas by
-//    'applySchemaList()' from module './lib/mongoose.js'.
+//  * It is an instance of lib assisted-json-rpc-provider.
+//  * npm i assisted-json-rpc-provider.
 ```

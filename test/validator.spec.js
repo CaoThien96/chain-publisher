@@ -1,33 +1,32 @@
 'use strict'
 
 const assert = require('assert')
-const {JsonRpcProvider} = require('@ethersproject/providers')
-const {Mongoose} = require('mongoose')
-const {standardizeStartConfiguration} = require('../lib/validator')
-const provider = new JsonRpcProvider()
+const { JsonRpcProvider } = require('@ethersproject/providers')
+const { standardizeStartConfiguration } = require('../lib/validator')
+const { AssistedJsonRpcProvider } = require('assisted-json-rpc-provider')
+const storage = require('node-persist');
+
+const RPC = '"https://bsc-dataseed.binance.org"'
+const provider = new AssistedJsonRpcProvider(
+    new JsonRpcProvider(RPC),
+    {
+        url: 'https://api.bscscan.com/api',
+        maxResults: 1000,
+        rangeThreshold: 1500,
+        rateLimitCount: 1,
+        rateLimitDuration: 5000
+    }
+)
+
 const getProvider = () => provider
 
 describe('validator.standardizeStartConfiguration', () => {
-    it('return valid config', () => {
+    it('return valid config', async () => {
+        await storage.init();
         let config = {
-            consumerConstructors: [
-                function() {}
-            ],
-            mongoose: new Mongoose('http://foo.bar/database'),
-            processorConfigs: {
-                merge: {
-                    getProvider,
-                    getLogs: function() {},
-                    getConcurrency: function() {},
-                    getSize: function() {}
-                },
-                partition: {
-                    getProvider: () => [provider, provider],
-                    getLogs: function() {},
-                    getConcurrency: function() {},
-                    getSize: function() {}
-                },
-            },
+            provider,
+            size: 1500,
+            storage
         }
         let validConfig = standardizeStartConfiguration(config)
     })
@@ -38,215 +37,94 @@ describe('validator.standardizeStartConfiguration', () => {
                 standardizeStartConfiguration(undefined)
             },
             {
-                name: 'ChainBackendError',
+                name: 'ChainPublisherError',
                 message: 'undefined configuration'
             }
         )
     })
 
-    it('config.consumerConstructors is not an array throws error', () => {
+    it('config.provider is not an AssistedJsonRpcProvider throws error', async () => {
+        await storage.init();
         assert.throws(
             () => {
                 standardizeStartConfiguration({
-                    consumerConstructors: undefined,
-                    mongoose: new Mongoose('http://foo.bar/database'),
-                    processorConfigs: {
-                        merge: {
-                            getProvider,
-                            getLogs: function() {},
-                            getConcurrency: function() {},
-                            getSize: function() {}
-                        },
-                        partition: {
-                            getProvider,
-                            getLogs: function() {},
-                            getConcurrency: function() {},
-                            getSize: function() {}
-                        },
-                    },
+                    provider: new JsonRpcProvider(RPC),
+                    size: 1500,
+                    storage
                 })
             },
             {
-                name: 'ChainBackendError',
-                message: 'invalid configuration "consumerConstructors"'
+                name: 'ChainPublisherError',
+                message: 'invalid configuration "provider". Please use lib assisted-json-rpc-provider'
+            }
+        )
+        assert.throws(
+            () => {
+                standardizeStartConfiguration({
+                    provider: undefined,
+                    size: 1500,
+                    storage
+                })
+            },
+            {
+                name: 'ChainPublisherError',
+                message: 'invalid configuration "provider". Please use lib assisted-json-rpc-provider'
             }
         )
     })
 
-    it('config.consumerConstructors[0] is not a function throws error', () => {
+    it('config.provider[0] is not a AssistedJsonRpcProvider throws error', async () => {
+        await storage.init();
         assert.throws(
             () => {
                 standardizeStartConfiguration({
-                    consumerConstructors: [
+                    provider: [
                         {}
                     ],
-                    mongoose: new Mongoose('http://foo.bar/database'),
-                    processorConfigs: {
-                        merge: {
-                            getProvider,
-                            getLogs: function() {},
-                            getConcurrency: function() {},
-                            getSize: function() {}
-                        },
-                        partition: {
-                            getProvider,
-                            getLogs: function() {},
-                            getConcurrency: function() {},
-                            getSize: function() {}
-                        },
-                    },
+                    size: 1500,
+                    storage
                 })
             },
             {
-                name: 'ChainBackendError',
-                message: 'invalid configuration "consumerConstructors[0]"'
+                name: 'ChainPublisherError',
+                message: 'invalid configuration "provider". Please use lib assisted-json-rpc-provider'
             }
         )
     })
 
-    it('config.mongoose is invalid throws error', () => {
+    it('config.storage is invalid throws error', () => {
         assert.throws(
             () => {
                 standardizeStartConfiguration({
-                    consumerConstructors: [
-                        function() {}
-                    ],
-                    mongoose: undefined,
-                    processorConfigs: {
-                        merge: {
-                            getProvider,
-                            getLogs: function() {},
-                            getConcurrency: function() {},
-                            getSize: function() {}
-                        },
-                        partition: {
-                            getProvider,
-                            getLogs: function() {},
-                            getConcurrency: function() {},
-                            getSize: function() {}
-                        },
-                    },
+                    provider,
+                    storage: undefined,
+                    size: 1500
                 })
             },
             {
-                name: 'ChainBackendError',
-                message: 'invalid configuration "mongoose"'
-            }
-        )
-    })
-    
-    it('config.ethersProvider is invalid throws error', () => {
-        assert.throws(
-            () => {
-                standardizeStartConfiguration({
-                    consumerConstructors: [
-                        function() {}
-                    ],
-                    mongoose: new Mongoose('http://foo.bar/database'),
-                    processorConfigs: {
-                        merge: {
-                            getProvider: () => {},
-                            getLogs: function() {},
-                            getConcurrency: function() {},
-                            getSize: function() {}
-                        },
-                        partition: {
-                            getProvider,
-                            getLogs: function() {},
-                            getConcurrency: function() {},
-                            getSize: function() {}
-                        },
-                    },
-                })
-            },
-            {
-                name: 'ChainBackendError',
-                message: 'invalid configuration "ethersProvider"'
+                name: 'ChainPublisherError',
+                message: 'invalid configuration "storage"'
             }
         )
     })
 
-    it('config.processorConfigs.merge is invalid throws error', () => {
+    it('config.storage.getItem or config.storage.setItem is not function throws error', () => {
         assert.throws(
             () => {
                 standardizeStartConfiguration({
-                    consumerConstructors: [
-                        function() {}
-                    ],
-                    mongoose: new Mongoose('http://foo.bar/database'),
-                    processorConfigs: {
-                        merge: {},
-                        partition: {
-                            getProvider,
-                            getLogs: function() {},
-                            getConcurrency: function() {},
-                            getSize: function() {}
-                        },
+                    provider,
+                    storage: {
+                        getItem: undefined,
+                        setItem: undefined
                     },
+                    size: 1500
                 })
             },
             {
-                name: 'ChainBackendError',
-                message: 'invalid configuration "processorConfigs"'
+                name: 'ChainPublisherError',
+                message: 'invalid configuration "storage"'
             }
         )
     })
 
-    it('config.processorConfigs.partition is invalid throws error', () => {
-        assert.throws(
-            () => {
-                standardizeStartConfiguration({
-                    consumerConstructors: [
-                        function() {}
-                    ],
-                    mongoose: new Mongoose('http://foo.bar/database'),
-                    processorConfigs: {
-                        merge: {
-                            getProvider,
-                            getLogs: function() {},
-                            getConcurrency: function() {},
-                            getSize: function() {}
-                        },
-                        partition: {},
-                    },
-                })
-            },
-            {
-                name: 'ChainBackendError',
-                message: 'invalid configuration "processorConfigs"'
-            }
-        )
-    })
-
-    it('config has additional properties throws error', () => {
-        assert.throws(
-            () => {
-                standardizeStartConfiguration({
-                    consumerConstructors: [
-                        function() {}
-                    ],
-                    mongoose: new Mongoose('http://foo.bar/database'),
-                    processorConfigs: {
-                        merge: {
-                            getProvider,
-                            getLogs: function() {},
-                            getConcurrency: function() {},
-                            getSize: function() {}
-                        },
-                        partition: {
-                            getProvider,
-                            getLogs: function() {},
-                            getConcurrency: function() {},
-                            getSize: function() {}
-                        },
-                    },
-                    additionalProperty: {}
-                })
-            },
-            {
-                name: 'ChainBackendError',
-                message: 'configuration has unknown property: additionalProperty'
-            }
-        )
-    })
 })
